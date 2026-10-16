@@ -31,14 +31,29 @@ for (const mode of ["ramp", "kickflip"]) {
     }
     for (const row of sim.trace) {
       assert.ok(Number.isFinite(row.y));
-      assert.ok(row.thrust >= 0 && row.thrust <= sim.p.thrust * 1000 + 0.01);
+      assert.ok(
+        Object.values(row).every(
+          (value) => typeof value === "string" || Number.isFinite(value),
+        ),
+      );
+      assert.ok(row.thrust >= 0 && row.thrust <= sim.nominalThrust + 0.01);
+      assert.ok(row.massFlow >= 0 && row.massFlow <= sim.p.massFlow + 0.01);
+      assert.ok(Math.abs(row.thrust - row.massFlow * row.exhaustSpeed) < 0.01);
+      assert.ok(
+        row.tankPressureBarGauge >= 0 &&
+          row.tankPressureBarGauge <= sim.p.tankPressure,
+      );
+      assert.ok(
+        row.vehicleMass <= sim.p.mass &&
+          row.vehicleMass >= sim.p.mass - sim.trace[0].usableAirMass,
+      );
       assert.ok(row.gasRemaining >= 0 && row.gasRemaining <= 1);
     }
     sim.dispose();
   });
 
-  test(`${mode}: zero thrust cannot be reported as a successful demo`, () => {
-    const sim = run(mode, { thrust: 0 });
+  test(`${mode}: zero mass flow removes lift and rotation and cannot succeed`, () => {
+    const sim = run(mode, { massFlow: 0 });
     assert.equal(sim.phase, "crashed");
     assert.ok(sim.trace.every((row) => row.thrust === 0));
     sim.dispose();
@@ -59,11 +74,60 @@ test("insufficient lift on a heavy car produces a failed landing", () => {
   sim.dispose();
 });
 
-test("an exhausted gas budget removes all actuator forces", () => {
-  const sim = run("ramp", { gasBudget: 0 });
+test("a tank at ambient pressure removes all actuator forces", () => {
+  const sim = run("ramp", { tankPressure: 0 });
   assert.equal(sim.phase, "crashed");
   assert.ok(sim.trace.every((row) => row.thrust === 0));
   assert.equal(sim.gasUsed, 0);
+  sim.dispose();
+});
+
+test("zero exhaust speed removes all thrust", () => {
+  const sim = run("kickflip", { exhaustSpeed: 0 });
+  assert.equal(sim.phase, "crashed");
+  assert.ok(sim.trace.every((row) => row.thrust === 0 && row.massFlow === 0));
+  sim.dispose();
+});
+
+test("delaying all firing windows until after the jump prevents success", () => {
+  const p = parametersFor("kickflip");
+  const sim = run("kickflip", {
+    nozzles: p.nozzles.map((n) => ({ ...n, start: 10 })),
+  });
+  assert.equal(sim.phase, "crashed");
+  assert.ok(
+    sim.trace
+      .filter((r) => r.time < sim.flightStart + 10)
+      .every((r) => r.thrust === 0),
+  );
+  sim.dispose();
+});
+
+test("an individual nozzle direction changes the assisted trajectory", () => {
+  const p = parametersFor("ramp");
+  p.nozzles[0].foreAngle = 90;
+  const sim = run("ramp", p);
+  assert.equal(sim.phase, "crashed");
+  assert.ok(sim.trace.some((r) => Math.abs(r.forceX) > 100));
+  sim.dispose();
+});
+
+test("tank depletion conserves air mass and reduces rigid-body mass", () => {
+  const sim = run("ramp");
+  const first = sim.trace[0],
+    last = sim.trace.at(-1);
+  assert.ok(sim.gasUsed > 100);
+  assert.ok(
+    Math.abs(first.usableAirMass - last.usableAirMass - sim.gasUsed) < 1e-8,
+  );
+  assert.ok(Math.abs(sim.body.mass() - (sim.p.mass - sim.gasUsed)) < 0.001);
+  for (let i = 1; i < sim.trace.length; i++) {
+    assert.ok(
+      sim.trace[i].tankPressureBarGauge <=
+        sim.trace[i - 1].tankPressureBarGauge + 1e-8,
+    );
+    assert.ok(sim.trace[i].vehicleMass <= sim.trace[i - 1].vehicleMass + 1e-8);
+  }
   sim.dispose();
 });
 

@@ -144,15 +144,22 @@
                 <small>Positive = climbing</small>
               </div>
               <div>
-                <span class="metric-label">LIFT THRUST</span>
+                <span class="metric-label">TOTAL JET THRUST</span>
                 <p><strong id="thrust">0.0</strong><span>kN</span></p>
                 <div class="meter"><i id="thrust-meter"></i></div>
               </div>
               <div>
                 <span class="metric-label">PEAK WHEEL SUPPORT</span>
                 <p><strong id="load">0.00</strong><span>× weight</span></p>
-                <small id="fuel-label">Thrust budget: 100%</small>
+                <small id="fuel-label">Usable air: 100%</small>
               </div>
+            </div>
+
+            <div class="air-telemetry" aria-label="Cold-air telemetry">
+              <span>Tank <strong id="air-pressure">350.0</strong> bar g</span>
+              <span>Flow <strong id="air-flow">0.0</strong> kg/s</span>
+              <span>Exhaust <strong id="air-speed">0</strong> m/s</span>
+              <span>Air left <strong id="air-mass">0.0</strong> kg</span>
             </div>
 
             <div class="transport">
@@ -221,7 +228,7 @@
               <label
                 ><span
                   >Landing thrust control<small
-                    >Altitude tracking within thrust limits</small
+                    >Altitude tracking through the nozzle array</small
                   ></span
                 ><input
                   id="landing-assist"
@@ -231,7 +238,7 @@
               ><label
                 ><span
                   >Attitude control<small
-                    >Force-limited rotation and leveling</small
+                    >Rotation from nozzle forces and moment arms</small
                   ></span
                 ><input
                   id="attitude-assist"
@@ -290,18 +297,27 @@
       <h3>What is simulated</h3>
       <p>
         Rapier integrates a 3D rigid chassis at 240 Hz. Gravity, quadratic drag,
-        force-limited lift and attitude control act during flight. Four
-        spring-damper wheel contacts include friction and progressive bump
-        stops. The driven approach and ramp adhesion are prescribed; they do not
-        model Tesla’s suction system.
+        pressure-limited nozzle forces act during flight. Four spring-damper
+        wheel contacts include friction and progressive bump stops. The driven
+        approach and ramp adhesion are prescribed; they do not model Tesla’s
+        suction system.
       </p>
       <h3>What the thrusters represent</h3>
       <p>
-        An ideal vectorable vertical resultant and a bounded attitude torque.
-        This is an actuator approximation, not a nozzle-by-nozzle model. The
-        shared thrust budget integrates lift impulse plus torque divided by an
-        assumed 1.5 m moment arm. No CFD, pressure-vessel thermodynamics, tire
-        deformation, or structural damage is solved.
+        Four nozzles each apply force at their mounting point: thrust equals
+        mass flow × exhaust speed, opposite to the exhaust direction. Direction
+        trims, valve limits, and firing windows affect those forces. The
+        successful presets assume unrestricted automatic steering; choose “Fixed
+        to car” to fire along a body-mounted direction.
+      </p>
+      <p>
+        A finite ideal-air tank stays at 293 K. A regulator caps inlet pressure
+        at 100 bar absolute; flow and ideal expansion limit output as tank
+        pressure drops. Air consumption reduces vehicle mass. Tank volume,
+        initial pressure, rated flow, and speed limit are editable. These are
+        assumed values, not a fitted Tesla cold-gas system. No CFD, real-gas
+        cooling, plumbing losses, pressure-vessel structure, or nozzle geometry
+        is solved.
       </p>
       <h3>What “successful” means</h3>
       <p>
@@ -319,6 +335,22 @@
             target="_blank"
             rel="noopener noreferrer"
             >Tesla — The Ramp ↗</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/rocket-thrust-equation/"
+            target="_blank"
+            rel="noopener noreferrer"
+            >NASA — thrust equation ↗</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.grc.nasa.gov/www/k-12/BGP/mflchk.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            >NASA — compressible mass flow ↗</a
           >
         </li>
         <li>

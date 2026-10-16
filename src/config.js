@@ -16,6 +16,97 @@ export const WHEELS = Object.freeze([
   { x: -1.35, z: -0.825 },
 ]);
 
+// Body axes: +X nose, +Y roof, +Z left. Positions are nozzle exit points (m).
+export const NOZZLES = Object.freeze([
+  Object.freeze({
+    id: "front-left",
+    label: "Front left",
+    x: 1.25,
+    y: -0.37,
+    z: 0.64,
+  }),
+  Object.freeze({
+    id: "front-right",
+    label: "Front right",
+    x: 1.25,
+    y: -0.37,
+    z: -0.64,
+  }),
+  Object.freeze({
+    id: "rear-left",
+    label: "Rear left",
+    x: -1.25,
+    y: -0.37,
+    z: 0.64,
+  }),
+  Object.freeze({
+    id: "rear-right",
+    label: "Rear right",
+    x: -1.25,
+    y: -0.37,
+    z: -0.64,
+  }),
+]);
+
+export const AIR = Object.freeze({
+  ambientPressure: 101325,
+  gasConstant: 287.05,
+  temperature: 293.15,
+  gamma: 1.4,
+  regulatorPressure: 100e5, // Pa absolute; the flow rating is specified here.
+});
+
+export const NOZZLE_FIELDS = Object.freeze([
+  {
+    key: "foreAngle",
+    label: "Fore/aft exhaust angle",
+    unit: "°",
+    min: -180,
+    max: 180,
+    step: 1,
+  },
+  {
+    key: "sideAngle",
+    label: "Side exhaust angle",
+    unit: "°",
+    min: -180,
+    max: 180,
+    step: 1,
+  },
+  { key: "start", label: "Fire from", unit: "s", min: 0, max: 12, step: 0.05 },
+  {
+    key: "duration",
+    label: "Fire for",
+    unit: "s",
+    min: 0,
+    max: 12,
+    step: 0.05,
+  },
+  {
+    key: "throttle",
+    label: "Valve limit",
+    unit: "%",
+    min: 0,
+    max: 100,
+    step: 1,
+  },
+]);
+
+const nozzleDefaults = Object.freeze(
+  NOZZLES.map(({ id }) =>
+    Object.freeze({
+      id,
+      enabled: true,
+      assisted: true,
+      foreAngle: 0,
+      sideAngle: 0,
+      start: 0,
+      duration: 8,
+      throttle: 100,
+    }),
+  ),
+);
+
 export const OBSTACLES = Object.freeze([
   {
     x: -15,
@@ -56,7 +147,11 @@ const common = {
   mass: 1800,
   thrust: 42,
   torque: 24,
-  gasBudget: 6,
+  exhaustSpeed: 500,
+  massFlow: 120,
+  tankPressure: 350,
+  tankVolume: 800,
+  nozzles: nozzleDefaults,
   stiffness: 40,
   damping: 4.5,
   travel: 0.26,
@@ -134,11 +229,48 @@ export const PARAM_GROUPS = [
     ],
   },
   {
-    title: "Vehicle & thrusters",
+    title: "Cold-air supply",
+    fields: [
+      {
+        key: "exhaustSpeed",
+        label: "Exhaust-air speed limit",
+        unit: "m/s",
+        min: 0,
+        max: 1000,
+        step: 10,
+      },
+      {
+        key: "massFlow",
+        label: "Rated total mass flow",
+        unit: "kg/s",
+        min: 0,
+        max: 400,
+        step: 1,
+      },
+      {
+        key: "tankPressure",
+        label: "Initial tank pressure",
+        unit: "bar g",
+        min: 0,
+        max: 700,
+        step: 1,
+      },
+      {
+        key: "tankVolume",
+        label: "Tank internal volume",
+        unit: "L",
+        min: 10,
+        max: 2000,
+        step: 10,
+      },
+    ],
+  },
+  {
+    title: "Vehicle & control limits",
     fields: [
       {
         key: "mass",
-        label: "Total mass",
+        label: "Initial loaded mass",
         unit: "kg",
         min: 900,
         max: 3500,
@@ -146,7 +278,7 @@ export const PARAM_GROUPS = [
       },
       {
         key: "thrust",
-        label: "Maximum lift thrust",
+        label: "Lift request limit",
         unit: "kN",
         min: 0,
         max: 80,
@@ -154,19 +286,11 @@ export const PARAM_GROUPS = [
       },
       {
         key: "torque",
-        label: "Attitude torque limit",
+        label: "Attitude torque request limit",
         unit: "kN·m",
         min: 0,
         max: 50,
         step: 1,
-      },
-      {
-        key: "gasBudget",
-        label: "Full-power thrust budget",
-        unit: "s",
-        min: 0,
-        max: 10,
-        step: 0.1,
       },
       {
         key: "cgHeight",
@@ -241,10 +365,43 @@ export const SOURCES = Object.freeze({
 
 export function parametersFor(mode, overrides = {}) {
   if (!Object.hasOwn(DEFAULTS, mode)) throw new Error(`Unknown scene: ${mode}`);
-  const parameters = { ...DEFAULTS[mode] };
+  if (!overrides || typeof overrides !== "object" || Array.isArray(overrides))
+    throw new Error("Parameters must be an object");
+  const parameters = {
+    ...DEFAULTS[mode],
+    nozzles: nozzleDefaults.map((n) => ({ ...n })),
+  };
   for (const [key, value] of Object.entries(overrides)) {
     if (!Object.hasOwn(parameters, key))
       throw new Error(`Unknown parameter: ${key}`);
+    if (key === "nozzles") {
+      if (!Array.isArray(value) || value.length !== NOZZLES.length)
+        throw new Error(
+          "nozzles must contain all four nozzle IDs exactly once",
+        );
+      const ids = new Set();
+      for (const nozzle of value) {
+        if (!nozzle || typeof nozzle !== "object" || Array.isArray(nozzle))
+          throw new Error("Each nozzle must be an object");
+        const index = NOZZLES.findIndex((n) => n.id === nozzle.id);
+        if (index < 0 || ids.has(nozzle.id))
+          throw new Error(`Unknown or duplicate nozzle ID: ${nozzle.id}`);
+        ids.add(nozzle.id);
+        for (const [setting, input] of Object.entries(nozzle)) {
+          if (setting === "id") continue;
+          if (setting === "enabled" || setting === "assisted") {
+            if (typeof input !== "boolean")
+              throw new Error(`${nozzle.id}.${setting} must be true or false`);
+          } else {
+            const field = NOZZLE_FIELDS.find((f) => f.key === setting);
+            if (!field) throw new Error(`Unknown nozzle parameter: ${setting}`);
+            validateNumber(`${nozzle.id}.${setting}`, input, field);
+          }
+          parameters.nozzles[index][setting] = input;
+        }
+      }
+      continue;
+    }
     if (typeof parameters[key] === "boolean") {
       if (typeof value !== "boolean")
         throw new Error(`${key} must be true or false`);
@@ -252,13 +409,60 @@ export function parametersFor(mode, overrides = {}) {
       const field = PARAM_GROUPS.flatMap((group) => group.fields).find(
         (item) => item.key === key,
       );
-      if (!Number.isFinite(value) || value < field.min || value > field.max) {
-        throw new Error(`${key} must be between ${field.min} and ${field.max}`);
-      }
+      validateNumber(key, value, field);
     }
     parameters[key] = value;
   }
+  if (initialGasMass(parameters) >= parameters.mass)
+    throw new Error(
+      "Tank air mass must be less than the initial loaded vehicle mass. Reduce tank pressure or volume, or increase vehicle mass.",
+    );
   return parameters;
+}
+
+function validateNumber(name, value, field) {
+  if (!Number.isFinite(value) || value < field.min || value > field.max)
+    throw new Error(`${name} must be between ${field.min} and ${field.max}`);
+}
+
+export function initialGasMass(p) {
+  return (
+    ((AIR.ambientPressure + p.tankPressure * 1e5) * p.tankVolume) /
+    1000 /
+    (AIR.gasConstant * AIR.temperature)
+  );
+}
+
+export function readSetup(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Setup must be a JSON object.");
+  if (value.version !== 1 && value.version !== 2)
+    throw new Error("Unsupported setup version. Expected version 2.");
+  let overrides = value.parameters ?? {};
+  if (typeof overrides !== "object" || Array.isArray(overrides))
+    throw new Error("Parameters must be an object");
+  // Preserve the old impulse capacity as usable air mass when loading a v1 setup.
+  if (value.version === 1) {
+    const { gasBudget = 6, ...legacy } = overrides;
+    validateNumber("gasBudget", gasBudget, { min: 0, max: 10 });
+    overrides = { ...legacy };
+    const thrust = legacy.thrust ?? DEFAULTS[value.mode]?.thrust;
+    if (gasBudget === 0 || thrust === 0) overrides.tankPressure = 0;
+    else
+      overrides.tankVolume = Math.max(
+        10,
+        ((((gasBudget * thrust * 1000) / common.exhaustSpeed) *
+          AIR.gasConstant *
+          AIR.temperature) /
+          (common.tankPressure * 1e5)) *
+          1000,
+      );
+  }
+  return {
+    mode: value.mode,
+    parameters: parametersFor(value.mode, overrides),
+    migrated: value.version === 1,
+  };
 }
 
 export function rideHeight(p) {

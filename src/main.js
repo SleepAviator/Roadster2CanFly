@@ -1,5 +1,13 @@
 import "./style.css";
-import { DEFAULTS, PARAM_GROUPS, SOURCES, parametersFor } from "./config.js";
+import {
+  DEFAULTS,
+  PARAM_GROUPS,
+  NOZZLES,
+  NOZZLE_FIELDS,
+  SOURCES,
+  parametersFor,
+  readSetup,
+} from "./config.js";
 import { FlightSimulation, initializePhysics, STEP } from "./simulation.js";
 import { SceneView } from "./scene.js";
 
@@ -32,27 +40,59 @@ function notify(message, error = false) {
   );
 }
 
-function readSetup(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("Setup must be a JSON object.");
-  if (value.version !== 1)
-    throw new Error("Unsupported setup version. Expected version 1.");
-  return {
-    mode: value.mode,
-    parameters: parametersFor(value.mode, value.parameters ?? {}),
-  };
-}
-
 function setup() {
-  return { version: 1, mode, parameters: { ...parameters } };
+  return { version: 2, mode, parameters: structuredClone(parameters) };
 }
 
 function updatePresetBadge() {
-  const isDefault = Object.keys(DEFAULTS[mode]).every(
-    (key) => parameters[key] === DEFAULTS[mode][key],
-  );
+  const isDefault =
+    JSON.stringify(parameters) === JSON.stringify(DEFAULTS[mode]);
   $("preset-badge").textContent = isDefault ? "SUCCESS PRESET" : "CUSTOM SETUP";
   $("preset-badge").classList.toggle("custom", !isDefault);
+}
+
+function numericControl(
+  field,
+  label,
+  id,
+  getValue,
+  change,
+  slider = true,
+  accessibleLabel = label,
+) {
+  const wrap = document.createElement("div");
+  wrap.className = "parameter-field";
+  wrap.innerHTML = `<div class="field-topline"><label for="${slider ? "range" : "number"}-${id}">${label}</label><div class="field-value"><input id="number-${id}" type="number" aria-label="${accessibleLabel} in ${field.unit}" min="${field.min}" max="${field.max}" step="${field.step}"/><span>${field.unit}</span></div></div>${slider ? `<input id="range-${id}" type="range" min="${field.min}" max="${field.max}" step="${field.step}"/><div class="range-bounds" aria-hidden="true"><span>${field.min} ${field.unit}</span><span>${field.max} ${field.unit}</span></div>` : ""}`;
+  const range = wrap.querySelector('[type="range"]');
+  const number = wrap.querySelector('[type="number"]');
+  const sync = () => {
+    number.value = getValue();
+    if (range) range.value = number.value;
+  };
+  sync();
+  range?.addEventListener("input", () => {
+    number.value = range.value;
+  });
+  range?.addEventListener("change", () => {
+    change(Number(range.value));
+    sync();
+  });
+  const commitNumber = () => {
+    if (number.value === "" || !number.checkValidity()) return;
+    const value = Number(number.value);
+    if (range) range.value = number.value;
+    if (getValue() !== value && !change(value)) sync();
+  };
+  number.addEventListener("input", commitNumber);
+  number.addEventListener("change", () => {
+    if (!number.checkValidity() || number.value === "") {
+      number.reportValidity();
+      sync();
+      return;
+    }
+    commitNumber();
+  });
+  return wrap;
 }
 
 function makeControls() {
@@ -60,7 +100,7 @@ function makeControls() {
   PARAM_GROUPS.forEach((group, index) => {
     const details = document.createElement("details");
     details.className = "parameter-group";
-    details.open = index === 0;
+    details.open = index < 2;
     const summary = document.createElement("summary");
     summary.textContent = group.title;
     details.append(summary);
@@ -68,53 +108,119 @@ function makeControls() {
     fields.className = "parameter-fields";
     for (const field of group.fields) {
       if (field.mode && field.mode !== mode) continue;
-      const wrap = document.createElement("div");
-      wrap.className = "parameter-field";
       const label =
         field.key === "height"
           ? mode === "ramp"
             ? "Ramp height"
             : "Target jump height"
           : field.label;
-      wrap.innerHTML = `<div class="field-topline"><label for="range-${field.key}">${label}</label><div class="field-value"><input id="number-${field.key}" type="number" aria-label="${label} in ${field.unit}" min="${field.min}" max="${field.max}" step="${field.step}"/><span>${field.unit}</span></div></div><input id="range-${field.key}" type="range" min="${field.min}" max="${field.max}" step="${field.step}"/><div class="range-bounds" aria-hidden="true"><span>${field.min} ${field.unit}</span><span>${field.max} ${field.unit}</span></div>`;
-      const range = wrap.querySelector('[type="range"]'),
-        number = wrap.querySelector('[type="number"]');
-      range.value = number.value = parameters[field.key];
-      range.addEventListener("input", () => {
-        number.value = range.value;
-      });
-      range.addEventListener("change", () =>
-        changeParameter(field.key, Number(range.value)),
+      fields.append(
+        numericControl(
+          field,
+          label,
+          field.key,
+          () => parameters[field.key],
+          (value) => changeParameter(field.key, value),
+        ),
       );
-      const commitNumber = () => {
-        if (number.value === "" || !number.checkValidity()) return;
-        range.value = number.value;
-        const value = Number(number.value);
-        if (parameters[field.key] !== value) changeParameter(field.key, value);
-      };
-      number.addEventListener("input", commitNumber);
-      number.addEventListener("change", () => {
-        if (!number.checkValidity() || number.value === "") {
-          number.reportValidity();
-          number.value = parameters[field.key];
-          return;
-        }
-        commitNumber();
-      });
-      fields.append(wrap);
+    }
+    if (group.title === "Cold-air supply") {
+      const note = document.createElement("p");
+      note.className = "control-note";
+      note.textContent =
+        "Flow rating at 100 bar absolute, shared equally by four valves. Ideal 293 K tank; pressure limits flow and exhaust speed. Loaded mass includes the air.";
+      const output = document.createElement("p");
+      output.id = "supply-summary";
+      output.className = "supply-summary";
+      fields.append(note, output);
     }
     details.append(fields);
     $("parameter-groups").append(details);
+    if (index === 1) makeNozzleControls();
   });
   $("landing-assist").checked = parameters.landingAssist;
   $("attitude-assist").checked = parameters.attitudeAssist;
   updatePresetBadge();
 }
 
+function makeNozzleControls() {
+  const details = document.createElement("details");
+  details.className = "parameter-group";
+  details.innerHTML = `<summary>Individual nozzles</summary><div class="nozzle-controls"><p class="control-note">Firing times start at free-flight release, after the driven approach and ramp. Air blows opposite to thrust.</p><div class="nozzle-status-grid">${NOZZLES.map((n) => `<div><span>${n.label}</span><output id="status-${n.id}">Idle</output></div>`).join("")}</div><label for="nozzle-select" class="nozzle-selector-label">Edit nozzle</label><select id="nozzle-select" aria-label="Edit nozzle">${NOZZLES.map((n, i) => `<option value="${i}">${i + 1} · ${n.label}</option>`).join("")}</select><div id="nozzle-editor"></div></div>`;
+  $("parameter-groups").append(details);
+  $("nozzle-select").addEventListener("change", () =>
+    makeNozzleEditor(Number($("nozzle-select").value)),
+  );
+  makeNozzleEditor(0);
+}
+
+function makeNozzleEditor(index) {
+  const mount = NOZZLES[index];
+  const n = parameters.nozzles[index];
+  const editor = $("nozzle-editor");
+  editor.replaceChildren();
+  const controls = document.createElement("div");
+  controls.className = "nozzle-mode-controls";
+  controls.innerHTML = `<label class="nozzle-enable"><input type="checkbox" aria-label="${mount.label} enabled" ${n.enabled ? "checked" : ""}/>Enabled</label><label>Direction mode<select aria-label="${mount.label} steering"><option value="assisted">Assisted + angle trims</option><option value="fixed">Fixed to car</option></select></label>`;
+  const enabled = controls.querySelector("input"),
+    steering = controls.querySelector("select");
+  steering.value = n.assisted ? "assisted" : "fixed";
+  enabled.addEventListener("change", () =>
+    changeNozzle(index, "enabled", enabled.checked),
+  );
+  steering.addEventListener("change", () =>
+    changeNozzle(index, "assisted", steering.value === "assisted"),
+  );
+  const fields = document.createElement("div");
+  fields.className = "nozzle-fields";
+  for (const field of NOZZLE_FIELDS) {
+    fields.append(
+      numericControl(
+        field,
+        field.label,
+        `${mount.id}-${field.key}`,
+        () => parameters.nozzles[index][field.key],
+        (value) => changeNozzle(index, field.key, value),
+        false,
+        `${mount.label} ${field.label.toLowerCase()}`,
+      ),
+    );
+  }
+  const note = document.createElement("p");
+  note.id = "nozzle-direction-note";
+  note.className = "control-note";
+  editor.append(controls, fields, note);
+  updateNozzleNote(index);
+}
+
+function updateNozzleNote(index) {
+  const n = parameters.nozzles[index];
+  $("nozzle-direction-note").textContent = `${
+    n.assisted
+      ? "Angles rotate the automatic exhaust direction in car axes (side about −X, then fore/aft about +Z). Zero means no trim. The valve setting caps output; steering is ideal and unrestricted."
+      : "At 0° / 0° exhaust points below the car. With the other angle zero, +90° fore/aft points toward the nose and +90° side points left. The valve fires at its selected setting throughout the window."
+  } Window: ${n.start.toFixed(2)}–${(n.start + n.duration).toFixed(2)} s after release.`;
+}
+
+function changeNozzle(index, key, value) {
+  const nozzles = parameters.nozzles.map((n, i) =>
+    i === index ? { ...n, [key]: value } : n,
+  );
+  const changed = changeParameter("nozzles", nozzles);
+  if (changed) updateNozzleNote(index);
+  return changed;
+}
+
 function changeParameter(key, value) {
-  parameters = parametersFor(mode, { ...parameters, [key]: value });
+  try {
+    parameters = parametersFor(mode, { ...parameters, [key]: value });
+  } catch (error) {
+    notify(error.message, true);
+    return false;
+  }
   resetSimulation();
   updatePresetBadge();
+  return true;
 }
 
 function resetSimulation() {
@@ -180,13 +286,27 @@ function updateTelemetry(s) {
   $("altitude").textContent = s.altitude.toFixed(1);
   $("vertical-speed").textContent =
     (s.velocity.y > 0.05 ? "+" : "") + s.velocity.y.toFixed(1);
-  $("thrust").textContent = (s.thrustLevel * parameters.thrust).toFixed(1);
+  $("thrust").textContent = (s.thrust / 1000).toFixed(1);
   $("load").textContent = s.metrics.peakLoadG.toFixed(2);
   $("fuel-label").textContent =
-    `Thrust budget: ${Math.round(s.gasRemaining * 100)}%`;
+    `Usable air: ${Math.round(s.gasRemaining * 100)}%`;
+  $("air-pressure").textContent = s.tankPressure.toFixed(1);
+  $("air-flow").textContent = s.massFlow.toFixed(1);
+  $("air-speed").textContent = s.exhaustSpeed.toFixed(0);
+  $("air-mass").textContent = s.gasMass.toFixed(1);
+  $("supply-summary").textContent =
+    `Supply capacity: ${(s.availableThrust / 1000).toFixed(1)} kN before nozzle limits · speed cap ${s.availableExhaustSpeed.toFixed(0)} m/s · vehicle ${s.vehicleMass.toFixed(1)} kg`;
+  for (const n of s.nozzles) {
+    $("status-" + n.id).textContent =
+      n.massFlow > 0
+        ? `${n.massFlow.toFixed(1)} kg/s · ${(n.thrust / 1000).toFixed(1)} kN`
+        : n.active
+          ? "Armed · no flow"
+          : "Closed";
+  }
   $("altitude-meter").style.width =
     `${Math.min(100, (s.altitude / 30) * 100)}%`;
-  $("thrust-meter").style.width = `${s.thrustLevel * 100}%`;
+  $("thrust-meter").style.width = `${Math.min(100, s.thrustLevel * 100)}%`;
   $("clock").textContent = `${s.time.toFixed(2).padStart(5, "0")} s`;
   const duration =
     simulation.approachDuration +
@@ -251,6 +371,10 @@ async function boot() {
       );
       mode = initial.mode;
       parameters = initial.parameters;
+      if (initial.migrated)
+        notify(
+          "Legacy setup converted to the finite-air tank model. Flight results may differ.",
+        );
     } catch (error) {
       notify(`Setup link could not be loaded: ${error.message}`, true);
     }
@@ -322,7 +446,11 @@ async function boot() {
         throw new Error("Setup files must be smaller than 100 kB.");
       const loaded = readSetup(JSON.parse(await file.text()));
       switchMode(loaded.mode, loaded.parameters);
-      notify("Setup loaded. Ready to fly.");
+      notify(
+        loaded.migrated
+          ? "Legacy setup converted to the finite-air tank model. Flight results may differ."
+          : "Setup loaded. Ready to fly.",
+      );
     } catch (error) {
       notify(`Setup could not be loaded: ${error.message}`, true);
     }

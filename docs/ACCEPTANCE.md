@@ -1,15 +1,15 @@
 # Acceptance record
 
-Checked locally on October 16, 2026, on an Apple M1 Max MacBook Pro with 64 GB RAM.
+Checked locally on October 16, 2026, on an Apple M1 Max MacBook Pro with 64 GB RAM, Node 26, Three.js 0.186.1, and Rapier 0.21.0.
 
-- All **10 physics/input tests pass** with Node 26 and Rapier 0.21.0.
-- Production build succeeds. The ~5 MB client bundle includes the WebAssembly physics engine.
-- The complete project, dependencies, and production build occupy approximately **85 MB**; `npm run check:size` enforces the 1 GB project budget.
-- In the live Codex in-app browser, both default scenes reach **Landing complete** with the same rounded touchdown metrics as the headless checks.
-- Changing lift thrust to zero updates the numeric field, slider, and custom-setup badge; the live browser then reports an underbody strike instead of success.
-- Restoring the successful preset resets the controls and permits a successful run again.
-- Orbit/follow cameras, playback speed, and scenario selection were exercised.
-- Configuration download produced valid version-1 JSON; telemetry download produced a CSV with 487 data rows for the checked failed ramp run.
-- The layout was inspected at a desktop width and at 417 px. The final narrow layout has no horizontal overflow.
+- All **23 physics, propulsion, and input tests pass**. Tests cover successful defaults, finite tank depletion, mass conservation, pressure/flow/speed limits, force and moment balance, individual nozzle directions and firing windows, invalid inputs, and setup round trips.
+- The GitHub Pages production build succeeds. The deployable site is approximately **5.01 MB** and includes the WebAssembly physics engine. No runtime dependencies were added for the new controls.
+- The project, dependencies, and build occupy approximately **85 MB**, below the **1 GB** budget enforced by `npm run check:size`.
+- Both default scenes reach **Landing complete** in the Codex in-app browser. The ramp reports **1.39 m/s** touchdown, **1.81× weight** peak wheel support, and **177.5 bar gauge** remaining tank pressure. The kickflip reports **1.42 m/s**, **1.83× weight**, and **210.8 bar gauge**.
+- All four supply inputs were edited in the browser. Changing the speed limit to 400 m/s, rated flow to 80 kg/s, tank pressure to 25 bar gauge, and volume to 400 L updates the supply capacity to **8.3 kN** and usable air to **11.9 kg**.
+- Front-left direction angles, valve percentage, enable switch, fixed/assisted steering, firing start, and duration were exercised. Switching to the front-right editor leaves its defaults intact; returning to the front-left editor retains its distinct settings.
+- A version-2 setup link restores supply values and the front-left nozzle's angles, start/duration, valve percentage, steering, and enable state. JSON parsing and serialization are also covered by automated tests. The browser file-picker automation stalled; direct JSON file upload remains unverified in this browser run. Clipboard sharing and revised download files were not exercised.
+- Impossible tank-air/loaded-mass combinations display a clear error and keep the last valid value. Restoring the successful preset resets the controls and badge.
+- Playback and scene switching were exercised. The desktop layout was visually inspected with no horizontal overflow. The browser console reported no errors during the successful runs.
 
-The preview image shows the live app after its default kickflip completed. Downloads used only for smoke testing were removed. No real vehicle, nozzle-flow, structural-damage, or physical-landing validation was performed. Clipboard sharing and JSON upload were not exercised in browser acceptance.
+The preview image is from the running app. Temporary fixtures and formatter caches were removed after checks. The user-requested local review server remains available. This record verifies computational and browser behavior; it does not validate Tesla hardware, real-gas flow, pressure-vessel structure, or physical landing safety. See [MODEL.md](MODEL.md) for assumptions and primary sources.

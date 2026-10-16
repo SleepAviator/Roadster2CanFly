@@ -1,9 +1,10 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { VEHICLE, WHEELS, OBSTACLES } from "./config.js";
+import { VEHICLE, WHEELS, OBSTACLES, NOZZLES } from "./config.js";
 
 const UP = new THREE.Vector3(0, 1, 0);
+const DOWN = new THREE.Vector3(0, -1, 0);
 const TRAIL_LIMIT = 700;
 const palette = {
   silver: 0xdde5e9,
@@ -258,30 +259,30 @@ function addRoadster() {
     side: THREE.DoubleSide,
   });
   const jets = [];
-  for (const x of [-1.25, 1.25]) {
-    for (const z of [-0.64, 0.64]) {
-      const nozzleGeometry = new THREE.CylinderGeometry(0.09, 0.12, 0.1, 12);
-      mesh(nozzleGeometry, carbon, group, [x, -0.32, z]);
-      const jet = new THREE.Group();
-      jet.position.set(x, -0.37, z);
-      group.add(jet);
-      const outer = mesh(
-        new THREE.ConeGeometry(0.24, 1, 14, 1, true),
-        plumeOuter,
-        jet,
-        [0, -0.5, 0],
-      );
-      const core = mesh(
-        new THREE.ConeGeometry(0.1, 0.73, 10, 1, true),
-        plumeCore,
-        jet,
-        [0, -0.365, 0],
-      );
-      outer.castShadow = core.castShadow = false;
-      outer.receiveShadow = core.receiveShadow = false;
-      jet.visible = false;
-      jets.push(jet);
-    }
+  for (const { x, y, z } of NOZZLES) {
+    const nozzle = new THREE.Group();
+    nozzle.position.set(x, y, z);
+    group.add(nozzle);
+    const nozzleGeometry = new THREE.CylinderGeometry(0.09, 0.12, 0.1, 12);
+    mesh(nozzleGeometry, carbon, nozzle, [0, 0.05, 0]);
+    const jet = new THREE.Group();
+    nozzle.add(jet);
+    const outer = mesh(
+      new THREE.ConeGeometry(0.24, 1, 14, 1, true),
+      plumeOuter,
+      jet,
+      [0, -0.5, 0],
+    );
+    const core = mesh(
+      new THREE.ConeGeometry(0.1, 0.73, 10, 1, true),
+      plumeCore,
+      jet,
+      [0, -0.365, 0],
+    );
+    outer.castShadow = core.castShadow = false;
+    outer.receiveShadow = core.receiveShadow = false;
+    jet.visible = false;
+    jets.push(jet);
   }
   return { group, wheels, jets };
 }
@@ -812,14 +813,26 @@ export class SceneView {
 
     const thrust = THREE.MathUtils.clamp(snapshot.thrustLevel || 0, 0, 1);
     this.jets.forEach((jet, index) => {
-      jet.visible = thrust > 0.015;
-      // The physics model uses an ideal vectorable lift resultant in world-up.
-      jet.quaternion.copy(this.car.quaternion).invert();
+      const output = snapshot.nozzles[index];
+      const level =
+        snapshot.availableThrust > 0
+          ? THREE.MathUtils.clamp(
+              output.thrust / (snapshot.availableThrust / NOZZLES.length),
+              0,
+              1,
+            )
+          : 0;
+      jet.visible = output.thrust > 10;
+      // Snapshot directions are body-frame exhaust vectors, opposite to each actual point force.
+      jet.parent.quaternion.setFromUnitVectors(
+        DOWN,
+        new THREE.Vector3().copy(output.direction),
+      );
       const pulse = 0.94 + 0.06 * Math.sin(snapshot.time * 49 + index * 2.3);
       jet.scale.set(
-        0.55 + thrust * 0.7,
-        (0.6 + thrust * 2.6) * pulse,
-        0.55 + thrust * 0.7,
+        0.55 + level * 0.7,
+        (0.6 + level * 2.6) * pulse,
+        0.55 + level * 0.7,
       );
     });
     this.dust.forEach((ring, index) => {

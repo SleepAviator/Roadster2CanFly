@@ -4,9 +4,11 @@ import {
   VEHICLE,
   WHEELS,
   OBSTACLES,
+  NOZZLES,
   parametersFor,
   rideHeight,
 } from "./config.js";
+import { airSupply, nozzleForces } from "./propulsion.js";
 
 export const STEP = 1 / 240;
 const GRAVITY = 9.81;
@@ -80,6 +82,22 @@ export class FlightSimulation {
     this.airborne = false;
     this.rollAngle = 0;
     this.gasUsed = 0;
+    this.mass = p.mass;
+    this.supply = airSupply(p);
+    this.initialUsableMass = this.supply.usableMass;
+    this.nominalThrust = this.supply.maxThrust;
+    this.actualThrust = 0;
+    this.actualMassFlow = 0;
+    this.netForce = new Vector3();
+    this.actualTorque = new Vector3();
+    this.nozzleState = nozzleForces(
+      p,
+      this.supply,
+      -1,
+      new Vector3(),
+      new Vector3(),
+      STEP,
+    ).jets;
     this.thrustLevel = 0;
     this.torqueLevel = 0;
     this.wheelCompression = [0, 0, 0, 0];
@@ -278,9 +296,9 @@ export class FlightSimulation {
       );
       this.normalLoad += normal;
       const friction = new Vector3(
-        (-pointVelocity.x * p.mass * 1.6) / 4,
+        (-pointVelocity.x * this.mass * 1.6) / 4,
         0,
-        (-pointVelocity.z * p.mass * 2) / 4,
+        (-pointVelocity.z * this.mass * 2) / 4,
       );
       friction.clampLength(0, p.friction * normal);
       const force = friction.setY(normal);
@@ -292,7 +310,6 @@ export class FlightSimulation {
     const p = this.p;
     this.thrustLevel = 0;
     this.torqueLevel = 0;
-    if (this.gasUsed >= p.gasBudget || p.thrust <= 0) return;
     const maxThrust = p.thrust * 1000;
     let thrust = 0;
     if (p.landingAssist && this.touchdownTime === null) {
@@ -315,7 +332,7 @@ export class FlightSimulation {
         target.a +
         11 * (target.y - position.y) +
         6.5 * (target.v - velocity.y);
-      thrust = clamp(p.mass * acceleration, 0, maxThrust);
+      thrust = clamp(this.mass * acceleration, 0, maxThrust);
     }
     const torque = new Vector3();
     if (
@@ -351,24 +368,52 @@ export class FlightSimulation {
         .applyQuaternion(rotation)
         .clampLength(0, p.torque * 1000);
     }
-    // Express both actuator impulses as equivalent seconds of full-power lift thrust.
-    const requestedBudget =
-      ((thrust + torque.length() / 1.5) / maxThrust) * STEP;
-    const scale =
-      requestedBudget > 0
-        ? Math.min(1, (p.gasBudget - this.gasUsed) / requestedBudget)
-        : 1;
-    thrust *= scale;
-    torque.multiplyScalar(scale);
-    // Idealized vectorable resultant. No nozzle-flow or ground-effect model is claimed.
-    this.body.addForce({ x: 0, y: thrust, z: 0 }, true);
-    this.body.addTorque(torque, true);
-    this.thrustLevel = thrust / maxThrust;
-    this.torqueLevel = p.torque > 0 ? torque.length() / (p.torque * 1000) : 0;
-    this.gasUsed = Math.min(
-      p.gasBudget,
-      this.gasUsed + requestedBudget * scale,
+    const inverse = rotation.clone().invert();
+    const output = nozzleForces(
+      p,
+      this.supply,
+      tf,
+      new Vector3(0, thrust, 0).applyQuaternion(inverse),
+      torque.applyQuaternion(inverse),
+      STEP,
     );
+    this.nozzleState = output.jets;
+    this.actualThrust = 0;
+    for (const [i, jet] of output.jets.entries()) {
+      const mount = NOZZLES[i];
+      const point = new Vector3(mount.x, mount.y, mount.z)
+        .applyQuaternion(rotation)
+        .add(position);
+      this.body.addForceAtPoint(
+        jet.force.clone().applyQuaternion(rotation),
+        point,
+        true,
+      );
+      this.actualThrust += jet.thrust;
+    }
+    // All lift AND attitude actuation comes from these point forces; there is no extra torque actuator.
+    this.netForce.copy(output.force).applyQuaternion(rotation);
+    this.actualTorque.copy(output.torque).applyQuaternion(rotation);
+    this.actualMassFlow = output.massFlow;
+    this.thrustLevel =
+      this.nominalThrust > 0 ? this.actualThrust / this.nominalThrust : 0;
+    this.torqueLevel =
+      p.torque > 0 ? this.actualTorque.length() / (p.torque * 1000) : 0;
+    this.gasUsed += output.massFlow * STEP;
+    this.supply = airSupply(p, this.gasUsed);
+    const nextMass = p.mass - this.gasUsed;
+    if (nextMass !== this.mass) {
+      this.inertia.multiplyScalar(nextMass / this.mass);
+      this.mass = nextMass;
+      // Uniform inertia scaling approximates centered tank depletion; COM is held fixed.
+      this.body.setAdditionalMassProperties(
+        this.mass,
+        { x: 0, y: p.cgHeight, z: 0 },
+        this.inertia,
+        { x: 0, y: 0, z: 0, w: 1 },
+        true,
+      );
+    }
   }
 
   step(count = 1) {
@@ -442,7 +487,7 @@ export class FlightSimulation {
         );
         this.metrics.peakLoadG = Math.max(
           this.metrics.peakLoadG,
-          this.normalLoad / (this.p.mass * GRAVITY),
+          this.normalLoad / (this.mass * GRAVITY),
         );
         if (this.touchdownTime !== null && this.running) {
           if (
@@ -512,12 +557,31 @@ export class FlightSimulation {
       wheelContacts: this.wheelContacts,
       thrustLevel: this.thrustLevel,
       torqueLevel: this.torqueLevel,
+      thrust: this.actualThrust,
+      massFlow: this.actualMassFlow,
+      exhaustSpeed:
+        this.actualMassFlow > 0 ? this.nozzleState[0].exhaustSpeed : 0,
+      tankPressure: this.supply.pressureBar,
+      gasMass: this.supply.usableMass,
+      vehicleMass: this.mass,
+      availableThrust: this.supply.maxThrust,
+      availableExhaustSpeed: this.supply.exhaustSpeed,
       gasRemaining:
-        this.p.gasBudget > 0
-          ? Math.max(0, 1 - this.gasUsed / this.p.gasBudget)
+        this.initialUsableMass > 0
+          ? Math.max(0, 1 - this.gasUsed / this.initialUsableMass)
           : 0,
+      netForce: { ...this.netForce },
+      torque: { ...this.actualTorque },
+      nozzles: this.nozzleState.map((n) => ({
+        id: n.id,
+        active: n.active,
+        thrust: n.thrust,
+        massFlow: n.massFlow,
+        exhaustSpeed: n.massFlow > 0 ? n.exhaustSpeed : 0,
+        direction: { ...n.direction },
+      })),
       altitude: Math.max(0, this.body.translation().y - this.height),
-      loadG: this.normalLoad / (this.p.mass * GRAVITY),
+      loadG: this.normalLoad / (this.mass * GRAVITY),
       metrics: { ...this.metrics },
     };
   }
@@ -536,10 +600,30 @@ export class FlightSimulation {
       qy: s.rotation.y,
       qz: s.rotation.z,
       qw: s.rotation.w,
-      thrust: s.thrustLevel * this.p.thrust * 1000,
+      thrust: s.thrust,
+      forceX: s.netForce.x,
+      forceY: s.netForce.y,
+      forceZ: s.netForce.z,
+      torqueX: s.torque.x,
+      torqueY: s.torque.y,
+      torqueZ: s.torque.z,
+      massFlow: s.massFlow,
+      exhaustSpeed: s.exhaustSpeed,
+      tankPressureBarGauge: s.tankPressure,
+      usableAirMass: s.gasMass,
+      vehicleMass: s.vehicleMass,
       loadG: s.loadG,
       gasRemaining: s.gasRemaining,
       phase: s.phase,
+      ...Object.fromEntries(
+        s.nozzles.flatMap((n, i) => [
+          [`nozzle${i + 1}Thrust`, n.thrust],
+          [`nozzle${i + 1}MassFlow`, n.massFlow],
+          [`nozzle${i + 1}ExhaustX`, n.direction.x],
+          [`nozzle${i + 1}ExhaustY`, n.direction.y],
+          [`nozzle${i + 1}ExhaustZ`, n.direction.z],
+        ]),
+      ),
     });
   }
 

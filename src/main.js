@@ -125,10 +125,26 @@ function makeControls() {
       );
     }
     if (group.title === "Cold-air supply") {
+      const modeControl = document.createElement("label");
+      modeControl.className = "throttle-mode";
+      modeControl.innerHTML = `<span>Thrust control</span><select id="throttle-mode" aria-label="Thrust control"><option value="programme">Preset lift programme</option><option value="automatic">Auto throttle · hold target path</option></select>`;
+      modeControl.querySelector("select").value = parameters.autoThrottle
+        ? "automatic"
+        : "programme";
+      modeControl
+        .querySelector("select")
+        .addEventListener("change", (event) => {
+          changeParameter("autoThrottle", event.target.value === "automatic");
+          updateThrottleNote();
+        });
+      const modeNote = document.createElement("p");
+      modeNote.id = "throttle-note";
+      modeNote.className = "control-note";
+      fields.prepend(modeControl, modeNote);
       const note = document.createElement("p");
       note.className = "control-note";
       note.textContent =
-        "Flow rating at 100 bar absolute, shared equally by four valves. Ideal 293 K tank; pressure limits flow and exhaust speed. Loaded mass includes the air.";
+        "Full-valve flow is rated at 100 bar absolute and shared by four nozzles. Higher tank pressure adds air reserve; below the regulator setting, flow falls. Ideal 293 K tank; loaded mass includes the air.";
       const output = document.createElement("p");
       output.id = "supply-summary";
       output.className = "supply-summary";
@@ -140,7 +156,14 @@ function makeControls() {
   });
   $("landing-assist").checked = parameters.landingAssist;
   $("attitude-assist").checked = parameters.attitudeAssist;
+  updateThrottleNote();
   updatePresetBadge();
+}
+
+function updateThrottleNote() {
+  $("throttle-note").textContent = parameters.autoThrottle
+    ? "Auto throttle compensates to hold the target path. Flow and speed are capacity limits; raising spare capacity may leave the flight unchanged."
+    : "The lift programme stays fixed as you edit the air supply. Changing flow or exhaust speed changes thrust and the flight. Attitude steering is controlled separately below.";
 }
 
 function makeNozzleControls() {
@@ -284,6 +307,8 @@ function updateTelemetry(s) {
       ? "Ready when you are"
       : `${phaseNames[s.phase]}${simulation.running ? " · paused" : ""}`;
   $("altitude").textContent = s.altitude.toFixed(1);
+  $("peak-height").textContent =
+    `Peak rise: ${s.metrics.peakHeight.toFixed(1)} m`;
   $("vertical-speed").textContent =
     (s.velocity.y > 0.05 ? "+" : "") + s.velocity.y.toFixed(1);
   $("thrust").textContent = (s.thrust / 1000).toFixed(1);

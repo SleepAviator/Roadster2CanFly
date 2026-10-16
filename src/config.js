@@ -162,6 +162,7 @@ const common = {
   exitAngle: 135,
   attitudeAssist: true,
   landingAssist: true,
+  autoThrottle: false,
 };
 
 export const DEFAULTS = Object.freeze({
@@ -241,7 +242,7 @@ export const PARAM_GROUPS = [
       },
       {
         key: "massFlow",
-        label: "Rated total mass flow",
+        label: "Full-valve mass flow",
         unit: "kg/s",
         min: 0,
         max: 400,

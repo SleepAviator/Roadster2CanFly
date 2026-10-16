@@ -34,6 +34,7 @@ All numbers in this table are model inputs, not measurements of Tesla’s demo.
 | Tank internal volume                |         800 L |     Same |
 | Initial usable air                  |       ~333 kg |     Same |
 | Initial available jet thrust        |         60 kN |     Same |
+| Auto throttle                       |           Off |      Off |
 | Spring rate per wheel               |       40 kN/m |     Same |
 | Damper per wheel                    |    4.5 kN·s/m |     Same |
 | Compression travel                  |        0.26 m |     Same |
@@ -59,9 +60,13 @@ The tank uses fixed ideal-air assumptions: 293.15 K, gas constant 287.05 J/(kg·
 
 ## Flight control
 
-The ramp altitude reference is a cubic Hermite curve matching release height/vertical velocity and the desired touchdown height/velocity. The kickflip uses two quintic smoothstep segments to rise to the selected height and descend.
+The ramp altitude reference is a cubic Hermite curve matching release height/vertical velocity and the desired touchdown height/velocity. The kickflip uses two quintic smoothstep segments to rise to the selected height and descend. These define the nominal flight plan, rather than imposing positions on the dynamic chassis.
 
-Lift control requests `m * (g + reference_acceleration + 11 * height_error + 6.5 * vertical_velocity_error)`, limited to `[0, lift_request_limit]`. Mass `m` decreases as air is expelled. This is a request for a world-up force, transformed to body coordinates and allocated to the four nozzles.
+**Preset lift programme is the default.** The model first prepares nominal collective lift commands at 240 Hz using the default vehicle, supply, and nozzles for the selected speed, height, exit angle, flight duration, and rotation duration. It retains only the latest command programme per scene. Recorded values are force commands, not vehicle positions or a replayed trajectory.
+
+During the actual run, lift is `clamp(nominal_command(t) * current_supply_capacity / nominal_supply_capacity, 0, lift_request_limit)`. Thus the same nominal valve demand produces more thrust with more flow or exhaust speed, and less thrust when pressure limits delivery. Supply, vehicle mass, nozzle, and environment edits do not cause a new programme to be fitted around those changes. There is no altitude-error feedback in this mode to cancel them. The body still responds to integrated gravity, jet forces, drag, and contact; extra thrust can cause an overshoot and a harder eventual landing. Attitude assistance remains independently selectable.
+
+**Auto throttle is an explicit alternative.** It requests `m * (g + reference_acceleration + 11 * height_error + 6.5 * vertical_velocity_error)`, limited to `[0, lift_request_limit]`. Mass `m` decreases as air is expelled. This mode adjusts valves to hold the target path; a higher flow rating can be exactly compensated by a smaller valve opening when capacity is sufficient. Flow is then a capability limit, rather than a direct instruction to expel more air. Both modes request a world-up force that is transformed to body coordinates and allocated to the four nozzles.
 
 Attitude control tracks a quaternion reference with a proportional/damping torque request. The ramp target rotates from the exit attitude to an upright car facing back along the runway. The kickflip target completes one longitudinal roll. The request is capped at the selected torque norm. There is **no separate torque actuator**: actual rotation must come from nozzle forces at their moment arms.
 
@@ -77,7 +82,7 @@ w = inverse(D) * (requested_torque - r_mean × requested_force)
 F_i = requested_force / 4 + w × r_i
 ```
 
-Each assisted nozzle takes the opposite vector as its exhaust direction, applies its user-selected direction trims, and clamps force to its individual flow/speed/valve capacity. The four shares are computed before closed valves and saturation; unavailable capacity is not redistributed by an optimizer. Disabling a nozzle, shortening its window, or trimming it can spoil the maneuver. The controller responds to the resulting motion through feedback, but cannot add any hidden force or torque.
+Each assisted nozzle takes the opposite vector as its exhaust direction, applies its user-selected direction trims, and clamps force to its individual flow/speed/valve capacity. The four shares are computed before closed valves and saturation; unavailable capacity is not redistributed by an optimizer. Disabling a nozzle, shortening its window, or trimming it can spoil the maneuver. Attitude control responds through feedback; altitude correction occurs only in Auto throttle mode. Neither can add any hidden force or torque.
 
 Choose **Fixed to car** to bypass automatic steering and fire that nozzle at its selected valve percentage during its window. Both assistance switches can be off while fixed nozzles still fire. At zero angles its exhaust points along body -Y. Angles rotate the exhaust first about -X (side), then +Z (fore/aft). With the other angle zero, +90° side points exhaust left (+Z), and +90° fore/aft points it toward the nose (+X). Thrust points the opposite way. In assisted mode these same rotations trim the automatic body-frame exhaust direction; zero angles leave it unchanged. Ideal steering has no gimbal angle or rate limits.
 
@@ -87,7 +92,7 @@ Windows are half-open `[start, start + duration)` in **seconds since free-flight
 
 The model uses the ideal gas relation `P V = m R T`. Tank volume and temperature are constant. Initial loaded vehicle mass includes all tank air; expelled air is subtracted from both tank and vehicle mass. Gas remaining at ambient pressure is retained and cannot produce further thrust. Center of mass is held fixed and chassis inertia scales uniformly with the remaining loaded mass, rather than solving internal gas motion or tank placement.
 
-The user-selected **rated total mass flow** defines four equal ideal valve capacities at 100 bar absolute. The actual inlet is `P_in = min(P_tank, 100 bar absolute)`. Flow scales with inlet pressure. Above the critical pressure ratio it is choked; near ambient it uses the subsonic isentropic orifice relation and falls to zero:
+The user-selected **full-valve mass flow** defines four equal ideal valve capacities at 100 bar absolute. The actual inlet is `P_in = min(P_tank, 100 bar absolute)`. Above the regulator setting, more tank pressure adds air reserve without increasing initial flow. Below it, flow scales with inlet pressure. Above the critical pressure ratio it is choked; near ambient it uses the subsonic isentropic orifice relation and falls to zero:
 
 ```text
 r = P_ambient / P_in
@@ -128,7 +133,7 @@ These are explicit sandbox criteria, not Tesla specifications or safety standard
 
 ## Verification
 
-`npm test` checks successful defaults for both scenes; flow/speed/pressure limits; tank and rigid-body mass conservation; nozzle force and moment balance; direction, valve, and timing effects; the final gas step; incomplete-kickflip detection; insufficient lift; unpowered vertical acceleration; repeatability; setup round trips and legacy conversion; and rejected invalid parameters. Tests use the same physics and propulsion modules as the browser.
+`npm test` checks successful defaults for both scenes; actual trajectory changes with airflow and exhaust-speed edits; compensation only in explicit Auto throttle mode; flow/speed/pressure limits; tank and rigid-body mass conservation; nozzle force and moment balance; direction, valve, and timing effects; the final gas step; incomplete-kickflip detection; insufficient lift; unpowered vertical acceleration; repeatability; setup round trips and legacy conversion; and rejected invalid parameters. Tests use the same physics and propulsion modules as the browser.
 
 Default smoke results on the development Mac (M1 Max, Node 26, Rapier 0.21.0):
 
@@ -136,6 +141,16 @@ Default smoke results on the development Mac (M1 Max, Node 26, Rapier 0.21.0):
 | -------- | -------- | -----------------------: | -----------------: | -----------: | ------------------: | -------------: |
 | Ramp     | Complete |                ~1.39 m/s |     ~1.81 × weight |    ~164.0 kg |        ~177.5 bar g | Not applicable |
 | Kickflip | Complete |                ~1.42 m/s |     ~1.83 × weight |    ~132.4 kg |        ~210.8 bar g |         ~1.000 |
+
+With the same default kickflip plan and Preset lift programme, changing only full-valve flow gives:
+
+| Flow rating | Peak rise | Outcome                    |
+| ----------: | --------: | -------------------------- |
+|     90 kg/s |    ~2.5 m | Strikes the semi           |
+|    120 kg/s |    ~7.5 m | Stable landing             |
+|    150 kg/s |   ~21.2 m | Overshoot and hard landing |
+
+These cases were identical at 90–150 kg/s in the earlier implicit auto-throttle implementation. The regression tests now require a change in actual trajectory, not merely an updated capacity readout or a zero-flow failure.
 
 JSON setups and share links use version 2 and include the full supply and all four nozzle records. Loading version 1 converts its former impulse budget to an equivalent usable air mass at the default speed and tank pressure and visibly reports the migration; results can change. Invalid or physically impossible loaded-mass/tank combinations fail explicitly. CSV columns include SI force, torque, flow and mass, gauge pressure in bar, and each nozzle's thrust, flow, and body-frame exhaust vector. Nozzle indices 1–4 are front left, front right, rear left, rear right.
 

@@ -35,12 +35,13 @@ The size check enforces a **1 GB project budget**, including source, installed d
 ## What you can change
 
 - **Flight:** launch speed, ramp or jump height, ramp exit angle, target flight time, rotation duration.
-- **Cold-air supply:** exhaust-air speed, rated total mass flow, initial tank pressure, and tank volume. Live telemetry shows pressure, actual flow and exhaust speed, and remaining usable air.
+- **Cold-air supply:** exhaust-air speed, full-valve mass flow, initial tank pressure, and tank volume. Live telemetry shows pressure, actual flow and exhaust speed, remaining usable air, and peak rise.
+- **Thrust control:** the default **Preset lift programme** keeps nominal lift valve demand fixed, so airflow and exhaust-speed edits change thrust and trajectory. **Auto throttle** is a separate option that adjusts valve opening to hold the target path; increasing spare capacity in that mode may leave the flight unchanged.
 - **Individual nozzles:** select any of four corner nozzles, adjust two exhaust angles, enable/disable it, set its valve limit, and schedule its firing start and duration. Times start at free-flight release. Assisted steering uses angle trims; fixed mode fires along the chosen car-relative direction.
 - **Vehicle and control:** initial loaded mass, center of mass, lift request limit, and attitude torque request limit.
 - **Landing:** spring stiffness, damping, suspension travel, friction.
 - **Environment:** drag area and wind along the runway.
-- **Assistance:** independently enable altitude tracking and attitude control.
+- **Assistance:** independently enable collective lift and attitude control.
 
 Changes reset the simulation. **Restore successful preset** returns the current scene to its tested defaults. Save/load a version-2 JSON setup or copy a URL containing the full setup, including every nozzle. Version-1 setups are explicitly converted from their impulse budget to an equivalent usable air mass; results can differ under the new model. Export the run’s telemetry as CSV, including tank state, forces, and individual nozzle flows and exhaust directions.
 
@@ -57,6 +58,8 @@ The night runway, overhung ramp, airborne recovery, five-vehicle lineup, roll, a
 The driven approach and adhesion to the overhung ramp are prescribed. After release, Rapier integrates a rigid chassis at **240 Hz**. Four spring-damper wheel contacts handle landing support and friction. Four nozzle point forces produce both lift and rotation, consume air from a finite tank, and reduce vehicle mass. Pressure limits available flow and exhaust speed. Parameter changes can cause collisions, insufficient lift, hard landings, or an incomplete stunt.
 
 The successful presets assume **ideal unrestricted nozzle steering**, an **isothermal ideal-air tank**, and a **100 bar absolute regulator**. The flow rating is the combined four-valve capacity at that regulator pressure; lower pressure reduces it. Exhaust speed is capped by ideal expansion to ambient. The 800 L / 350 bar gauge tank and all other engineering values are illustrative assumptions, not Tesla hardware specifications. This is a lightweight reduced model, not CFD or a pressure-vessel design tool.
+
+For example, the default kickflip rises about **7.5 m at 120 kg/s**. With the same lift programme, **90 kg/s** reaches only about **2.5 m** and strikes the vehicle lineup; **150 kg/s** rises about **21.2 m** and lands hard. The nominal programme is prepared for the selected flight plan at the default hardware settings. Editing the air supply, vehicle mass, nozzles, or environment does not retune it to cancel those changes. The runway approach and ramp travel remain prescribed.
 
 See [the model and its assumptions](docs/MODEL.md) for equations, defaults, criteria, and limitations.
 

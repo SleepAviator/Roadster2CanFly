@@ -22,6 +22,7 @@ const smooth = (u) => {
 };
 let initialization;
 export const initializePhysics = () => (initialization ??= RAPIER.init());
+const programmeCache = new Map();
 
 function hermite(t, duration, y0, v0, y1, v1) {
   const u = clamp(t / duration, 0, 1),
@@ -60,6 +61,47 @@ function bump(t, duration, height, baseline) {
   };
 }
 
+// Plan collective valve opening at nominal hardware settings, then keep it fixed
+// when the user changes air supply, vehicle mass, nozzles, or environment.
+function liftProgrammeFor(mode, parameters) {
+  const plan = Object.fromEntries(
+    ["speed", "height", "exitAngle", "flightTime", "rotationTime"].map(
+      (key) => [key, parameters[key]],
+    ),
+  );
+  const key = JSON.stringify(plan);
+  const cached = programmeCache.get(mode);
+  if (cached?.key === key) return cached;
+  // Explicit auto-throttle mode avoids recursively preparing another programme.
+  const reference = new FlightSimulation(mode, { ...plan, autoThrottle: true });
+  const forces = [];
+  try {
+    reference.start();
+    for (let i = 0; i < 45 / STEP && reference.running; i++) {
+      reference.step();
+      if (reference.flightStart !== null) forces.push(reference.requestedLift);
+    }
+    if (
+      reference.running ||
+      forces.length === 0 ||
+      !forces.every(Number.isFinite)
+    )
+      throw new Error(
+        "Could not prepare the nominal lift programme for this flight plan",
+      );
+    const programme = {
+      key,
+      forces: new Float64Array(forces),
+      nominalThrust: reference.nominalThrust,
+    };
+    // Retain only the most recent plan per scene; no growing replay cache.
+    programmeCache.set(mode, programme);
+    return programme;
+  } finally {
+    reference.dispose();
+  }
+}
+
 /** SI-unit rigid-body model. The driven approach is prescribed; free flight is force-integrated. */
 export class FlightSimulation {
   constructor(mode = "ramp", overrides = {}) {
@@ -72,6 +114,8 @@ export class FlightSimulation {
     this.mode = mode;
     this.p = parametersFor(mode, overrides);
     const p = this.p;
+    this.liftProgramme = p.autoThrottle ? null : liftProgrammeFor(mode, p);
+    this.requestedLift = 0;
     this.height = rideHeight(p);
     this.time = 0;
     this.phase = "ready";
@@ -312,7 +356,7 @@ export class FlightSimulation {
     this.torqueLevel = 0;
     const maxThrust = p.thrust * 1000;
     let thrust = 0;
-    if (p.landingAssist && this.touchdownTime === null) {
+    if (p.landingAssist && this.touchdownTime === null && p.autoThrottle) {
       let target;
       if (tf <= p.flightTime) {
         target =
@@ -333,7 +377,17 @@ export class FlightSimulation {
         11 * (target.y - position.y) +
         6.5 * (target.v - velocity.y);
       thrust = clamp(this.mass * acceleration, 0, maxThrust);
+    } else if (p.landingAssist && this.touchdownTime === null) {
+      const command = this.liftProgramme.forces[Math.round(tf / STEP)] ?? 0;
+      // Same planned valve demand, different hardware: F = flow × exhaust speed.
+      // There is deliberately no altitude-error feedback to cancel the edit.
+      thrust = clamp(
+        (command * this.supply.maxThrust) / this.liftProgramme.nominalThrust,
+        0,
+        maxThrust,
+      );
     }
+    this.requestedLift = thrust;
     const torque = new Vector3();
     if (
       p.attitudeAssist &&

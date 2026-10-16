@@ -58,7 +58,39 @@ for (const mode of ["ramp", "kickflip"]) {
     assert.ok(sim.trace.every((row) => row.thrust === 0));
     sim.dispose();
   });
+
+  test(`${mode}: changing spare airflow changes the flight with the default lift programme`, () => {
+    const lower = run(mode, { massFlow: 90 });
+    const higher = run(mode, { massFlow: 150 });
+    assert.equal(lower.p.autoThrottle, false);
+    assert.ok(higher.metrics.peakHeight - lower.metrics.peakHeight > 2);
+    assert.ok(
+      Math.max(...higher.trace.map((r) => r.thrust)) >
+        Math.max(...lower.trace.map((r) => r.thrust)) * 1.2,
+    );
+    lower.dispose();
+    higher.dispose();
+  });
+
+  test(`${mode}: explicit auto throttle can compensate for additional airflow capacity`, () => {
+    const lower = run(mode, { massFlow: 90, autoThrottle: true });
+    const higher = run(mode, { massFlow: 150, autoThrottle: true });
+    assert.equal(lower.phase, "complete");
+    assert.equal(higher.phase, "complete");
+    assert.equal(lower.metrics.peakHeight, higher.metrics.peakHeight);
+    assert.equal(lower.metrics.touchdownSpeed, higher.metrics.touchdownSpeed);
+    lower.dispose();
+    higher.dispose();
+  });
 }
+
+test("exhaust-speed changes affect the default kickflip flight instead of being throttled away", () => {
+  const lower = run("kickflip", { exhaustSpeed: 400 });
+  const higher = run("kickflip", { exhaustSpeed: 600 });
+  assert.ok(higher.metrics.peakHeight - lower.metrics.peakHeight > 5);
+  lower.dispose();
+  higher.dispose();
+});
 
 test("landing without the kickflip does not complete the kickflip stunt", () => {
   const sim = run("kickflip", { torque: 0 });

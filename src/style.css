@@ -369,6 +369,10 @@ h1 {
   font-size: 8px;
   color: #718491;
 }
+.telemetry .metric-peak {
+  display: block;
+  margin-top: 8px;
+}
 .meter {
   height: 2px;
   background: #263642;
@@ -685,7 +689,8 @@ input[type="range"]::-moz-range-thumb {
   font-size: 10px;
   margin-bottom: 7px;
 }
-.nozzle-controls select {
+.nozzle-controls select,
+.throttle-mode select {
   width: 100%;
   min-width: 0;
   border: 1px solid #344b5b;
@@ -694,6 +699,16 @@ input[type="range"]::-moz-range-thumb {
   background: #172a37;
   padding: 8px;
   font-size: 11px;
+}
+.throttle-mode {
+  display: block;
+  margin: 0 0 12px;
+}
+.throttle-mode > span {
+  display: block;
+  color: #a4b3be;
+  font-size: 10px;
+  margin-bottom: 7px;
 }
 .nozzle-mode-controls {
   display: flex;

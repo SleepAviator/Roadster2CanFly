@@ -137,6 +137,9 @@
                 <span class="metric-label">HEIGHT ABOVE RUNWAY</span>
                 <p><strong id="altitude">0.0</strong><span>m</span></p>
                 <div class="meter"><i id="altitude-meter"></i></div>
+                <small id="peak-height" class="metric-peak"
+                  >Peak rise: 0.0 m</small
+                >
               </div>
               <div>
                 <span class="metric-label">VERTICAL VELOCITY</span>
@@ -228,7 +231,7 @@
               <label
                 ><span
                   >Landing thrust control<small
-                    >Altitude tracking through the nozzle array</small
+                    >Enable collective lift through the nozzle array</small
                   ></span
                 ><input
                   id="landing-assist"
@@ -309,6 +312,12 @@
         trims, valve limits, and firing windows affect those forces. The
         successful presets assume unrestricted automatic steering; choose “Fixed
         to car” to fire along a body-mounted direction.
+      </p>
+      <p>
+        The default preset lift programme keeps the nominal valve demand fixed,
+        so changing airflow or exhaust speed changes the flight. Auto throttle
+        is an explicit alternative: it adjusts valve opening to hold the target
+        path, so increasing spare flow capacity may have no visible effect.
       </p>
       <p>
         A finite ideal-air tank stays at 293 K. A regulator caps inlet pressure

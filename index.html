@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0a1015" />
+    <meta
+      name="description"
+      content="Recreate the Roadster ramp and kickflip with adjustable browser physics, thruster limits, and suspension."
+    />
+    <title>Roadster2CanFly — Flight Lab</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="app-header">
+        <a class="brand" href="./" aria-label="Roadster2CanFly home">
+          <span class="brand-mark" aria-hidden="true">↗</span>
+          <span
+            >ROADSTER<span class="brand-two">2</span>CANFLY
+            <small>FLIGHT LAB</small></span
+          >
+        </a>
+        <div class="header-actions">
+          <span class="model-label"><i></i> ILLUSTRATIVE PHYSICS</span
+          ><button id="about" class="text-button">
+            Model & sources <span aria-hidden="true">↗</span>
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">THE IMPOSSIBLE, PARAMETERIZED.</p>
+            <h1>
+              A little less road.<br class="mobile-break" />
+              A little more sky.
+            </h1>
+          </div>
+          <p class="heading-note">
+            Two stunts. Your physics.<br />Inspired by Tesla’s Roadster
+            demonstration.
+          </p>
+        </div>
+
+        <div class="lab-layout">
+          <section
+            class="simulation-panel"
+            aria-label="Interactive 3D simulation"
+          >
+            <div class="scene-toolbar">
+              <div class="scene-tabs" role="tablist" aria-label="Demo scene">
+                <button
+                  id="tab-ramp"
+                  class="scene-tab active"
+                  role="tab"
+                  aria-selected="true"
+                  data-mode="ramp"
+                >
+                  01 <span>The ramp</span>
+                </button>
+                <button
+                  id="tab-kickflip"
+                  class="scene-tab"
+                  role="tab"
+                  aria-selected="false"
+                  data-mode="kickflip"
+                >
+                  02 <span>The kickflip</span>
+                </button>
+              </div>
+              <button id="run" class="primary-button" disabled>
+                <span id="run-icon" aria-hidden="true">▶</span
+                ><span id="run-label">Run demo</span>
+              </button>
+            </div>
+
+            <div class="viewport-wrap">
+              <div
+                id="viewport"
+                aria-label="3D car, ramp, and runway. Drag to orbit; scroll to zoom."
+              ></div>
+              <div class="view-label">
+                <span class="live-dot"></span
+                ><span id="phase-label">READY FOR LAUNCH</span
+                ><span class="view-divider">/</span
+                ><span id="scene-label">OVERHUNG RAMP</span>
+              </div>
+              <div class="camera-controls" aria-label="Camera view">
+                <button
+                  class="camera-button active"
+                  data-camera="orbit"
+                  title="Orbit camera"
+                  aria-pressed="true"
+                >
+                  Orbit
+                </button>
+                <button
+                  class="camera-button"
+                  data-camera="follow"
+                  title="Follow the car"
+                  aria-pressed="false"
+                >
+                  Follow
+                </button>
+                <button
+                  class="camera-button"
+                  data-camera="side"
+                  title="Side view"
+                  aria-pressed="false"
+                >
+                  Side
+                </button>
+              </div>
+              <div id="loading" class="loading-state">
+                <span class="spinner"></span>
+                <p>Preparing the flight lab…</p>
+              </div>
+              <div id="outcome" class="outcome hidden" role="status">
+                <span id="outcome-icon">✓</span>
+                <div>
+                  <strong id="outcome-title"></strong>
+                  <p id="outcome-detail"></p>
+                </div>
+              </div>
+              <div class="viewport-hint">
+                DRAG TO ORBIT <span>·</span> SCROLL TO ZOOM
+              </div>
+              <div class="scale-label">
+                SI UNITS <span>METERS · SECONDS · NEWTONS</span>
+              </div>
+            </div>
+
+            <div class="telemetry" aria-label="Live telemetry">
+              <div>
+                <span class="metric-label">HEIGHT ABOVE RUNWAY</span>
+                <p><strong id="altitude">0.0</strong><span>m</span></p>
+                <div class="meter"><i id="altitude-meter"></i></div>
+              </div>
+              <div>
+                <span class="metric-label">VERTICAL VELOCITY</span>
+                <p><strong id="vertical-speed">0.0</strong><span>m/s</span></p>
+                <small>Positive = climbing</small>
+              </div>
+              <div>
+                <span class="metric-label">LIFT THRUST</span>
+                <p><strong id="thrust">0.0</strong><span>kN</span></p>
+                <div class="meter"><i id="thrust-meter"></i></div>
+              </div>
+              <div>
+                <span class="metric-label">PEAK WHEEL SUPPORT</span>
+                <p><strong id="load">0.00</strong><span>× weight</span></p>
+                <small id="fuel-label">Thrust budget: 100%</small>
+              </div>
+            </div>
+
+            <div class="transport">
+              <div class="transport-buttons">
+                <button
+                  id="restart"
+                  class="icon-button"
+                  title="Restart this configuration"
+                  aria-label="Restart this configuration"
+                >
+                  ↺
+                </button>
+              </div>
+              <div class="progress-block">
+                <div class="progress-meta">
+                  <span id="stage-text">Ready when you are</span
+                  ><span id="clock">00.00 s</span>
+                </div>
+                <div class="progress-track"><i id="progress-fill"></i></div>
+              </div>
+              <label class="speed-control"
+                ><span class="sr-only">Playback speed</span
+                ><select id="playback-speed">
+                  <option value="0.25">0.25×</option>
+                  <option value="0.5">0.5×</option>
+                  <option value="1" selected>1× speed</option>
+                  <option value="2">2×</option>
+                </select></label
+              >
+            </div>
+            <div class="scene-caption">
+              <p id="scene-description">
+                Climb the overhang. Right the car in flight. Settle onto the
+                runway.
+              </p>
+              <div class="caption-actions">
+                <a
+                  id="reference-link"
+                  href="https://www.youtube.com/watch?v=7p5LxFdc-Qg"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="reference-link"
+                  >Tesla’s clip ↗</a
+                ><button id="export-csv" class="text-button" disabled>
+                  Export telemetry ↓
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <aside class="parameters-panel" aria-label="Simulation parameters">
+            <div class="parameters-header">
+              <div>
+                <p class="eyebrow">THE CONTROL ROOM</p>
+                <h2>Make it your flight.</h2>
+              </div>
+              <span id="preset-badge" class="preset-badge">SUCCESS PRESET</span>
+            </div>
+            <p class="parameter-intro">
+              Start with a successful run, then change the variables. Edits
+              reset the scene.
+            </p>
+            <div id="parameter-groups"></div>
+            <fieldset class="assist-controls">
+              <legend>Flight assistance</legend>
+              <label
+                ><span
+                  >Landing thrust control<small
+                    >Altitude tracking within thrust limits</small
+                  ></span
+                ><input
+                  id="landing-assist"
+                  type="checkbox"
+                  checked
+                  role="switch" /></label
+              ><label
+                ><span
+                  >Attitude control<small
+                    >Force-limited rotation and leveling</small
+                  ></span
+                ><input
+                  id="attitude-assist"
+                  type="checkbox"
+                  checked
+                  role="switch"
+              /></label>
+            </fieldset>
+            <button id="restore-defaults" class="secondary-button">
+              ↺ Restore successful preset
+            </button>
+            <div class="configuration-actions">
+              <button id="share" class="text-button">Copy setup link</button
+              ><button id="save-setup" class="text-button">Save JSON ↓</button
+              ><button id="load-setup" class="text-button">Load JSON ↑</button
+              ><input
+                id="setup-file"
+                type="file"
+                accept="application/json,.json"
+                hidden
+              />
+            </div>
+            <p class="assumption-note">
+              Defaults are tuned model assumptions. They are not Tesla
+              specifications or a validated flight reconstruction.
+            </p>
+          </aside>
+        </div>
+
+        <footer class="app-footer">
+          <p>Built for curiosity. Grounded in a model.</p>
+          <span>240 Hz physics <i>·</i> All computation in your browser</span>
+        </footer>
+      </main>
+      <div id="notice" class="notice hidden" role="status"></div>
+    </div>
+
+    <dialog id="model-dialog">
+      <div class="dialog-header">
+        <p class="eyebrow">BEHIND THE FLIGHT</p>
+        <button
+          id="close-dialog"
+          class="icon-button"
+          aria-label="Close model information"
+        >
+          ×
+        </button>
+      </div>
+      <h2>A recreation, with its assumptions in view.</h2>
+      <p>
+        The two scenes follow the visible sequence in Tesla’s October 15, 2026
+        demonstration. Dimensions and engineering values here are adjustable
+        assumptions; the clips are edited and do not provide calibrated
+        trajectories.
+      </p>
+      <h3>What is simulated</h3>
+      <p>
+        Rapier integrates a 3D rigid chassis at 240 Hz. Gravity, quadratic drag,
+        force-limited lift and attitude control act during flight. Four
+        spring-damper wheel contacts include friction and progressive bump
+        stops. The driven approach and ramp adhesion are prescribed; they do not
+        model Tesla’s suction system.
+      </p>
+      <h3>What the thrusters represent</h3>
+      <p>
+        An ideal vectorable vertical resultant and a bounded attitude torque.
+        This is an actuator approximation, not a nozzle-by-nozzle model. The
+        shared thrust budget integrates lift impulse plus torque divided by an
+        assumed 1.5 m moment arm. No CFD, pressure-vessel thermodynamics, tire
+        deformation, or structural damage is solved.
+      </p>
+      <h3>What “successful” means</h3>
+      <p>
+        Avoid chassis collisions, touch down below 4 m/s vertical speed and 22°
+        tilt, then stabilize on at least three wheels below 0.8 m/s forward
+        speed. These are sandbox criteria, not vehicle safety limits. Peak wheel
+        support is the modeled total wheel force divided by vehicle weight; it
+        is not occupant acceleration.
+      </p>
+      <h3>Primary references</h3>
+      <ul>
+        <li>
+          <a
+            href="https://www.youtube.com/watch?v=7p5LxFdc-Qg"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Tesla — The Ramp ↗</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.youtube.com/watch?v=r5vsHHPVhJg"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Tesla — The Kickflip ↗</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.youtube.com/watch?v=qt5p-_tE8d0"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Tesla — Roadster Event (ramp 6:03; kickflip 10:56) ↗</a
+          >
+        </li>
+      </ul>
+      <p class="dialog-footnote">
+        Independent fan project. Not affiliated with or endorsed by Tesla or
+        SpaceX. The vehicle and scenery are original procedural artwork.
+      </p>
+    </dialog>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

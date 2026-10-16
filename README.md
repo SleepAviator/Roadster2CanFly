@@ -6,6 +6,12 @@ A small browser flight lab inspired by Tesla’s Roadster ramp and kickflip demo
 
 ![Flight lab with a completed kickflip](docs/preview.jpg)
 
+## Live demo
+
+The configured GitHub Pages address is **[sleepaviator.github.io/Roadster2CanFly/](https://sleepaviator.github.io/Roadster2CanFly/)**. It becomes available after Pages is enabled and the first deployment succeeds.
+
+The [publish workflow](.github/workflows/pages.yml) tests, builds, and deploys the site automatically on pushes to `main`. It can also be run manually from GitHub Actions. The workflow builds with `--base=/Roadster2CanFly/` so assets load at the repository URL; local development continues to use the root path. Only the built `dist/` website is deployed.
+
 ## Run on your Mac
 
 Use Node.js 22.12+ (or a newer supported Node release).

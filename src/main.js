@@ -144,11 +144,23 @@ function makeControls() {
       const note = document.createElement("p");
       note.className = "control-note";
       note.textContent =
-        "Full-valve flow is rated at 100 bar absolute and shared by four nozzles. Higher tank pressure adds air reserve; below the regulator setting, flow falls. Ideal 293 K tank; loaded mass includes the air.";
+        "Full-valve flow is rated at 100 bar absolute and shared by four nozzles. Higher pressure or volume adds reserve; extra reserve may leave a short flight unchanged. Below the regulator setting, flow falls. Exhaust speed is capped by ideal expansion. Loaded mass includes the air.";
       const output = document.createElement("p");
       output.id = "supply-summary";
       output.className = "supply-summary";
       fields.append(note, output);
+    }
+    const groupNotes = {
+      "Vehicle & control limits":
+        "Lift and torque settings are request ceilings. Raising an unused ceiling adds no force. They apply to collective lift and attitude assistance respectively; fixed nozzles use their own valve settings.",
+      "Suspension & environment":
+        "Springs, damping and friction act during wheel contact. Travel sets the bump-stop threshold; extra unused travel has no effect. Wind acts through drag after release, so it has no effect when drag area is zero.",
+    };
+    if (groupNotes[group.title]) {
+      const note = document.createElement("p");
+      note.className = "control-note";
+      note.textContent = groupNotes[group.title];
+      fields.append(note);
     }
     details.append(fields);
     $("parameter-groups").append(details);
@@ -220,9 +232,9 @@ function updateNozzleNote(index) {
   const n = parameters.nozzles[index];
   $("nozzle-direction-note").textContent = `${
     n.assisted
-      ? "Angles rotate the automatic exhaust direction in car axes (side about −X, then fore/aft about +Z). Zero means no trim. The valve setting caps output; steering is ideal and unrestricted."
+      ? "Angles rotate the automatic exhaust direction in car axes (side about −X, then fore/aft about +Z). Zero means no trim. The valve setting is a ceiling; reducing spare capacity may leave output unchanged. Steering is ideal and unrestricted."
       : "At 0° / 0° exhaust points below the car. With the other angle zero, +90° fore/aft points toward the nose and +90° side points left. The valve fires at its selected setting throughout the window."
-  } Window: ${n.start.toFixed(2)}–${(n.start + n.duration).toFixed(2)} s after release.`;
+  } Window: ${n.start.toFixed(2)}–${(n.start + n.duration).toFixed(2)} s after release. ${n.assisted ? "Extra time after controller demand ends adds no thrust." : "Fixed nozzles can keep firing after touchdown."} Disabled nozzles never fire.`;
 }
 
 function changeNozzle(index, key, value) {

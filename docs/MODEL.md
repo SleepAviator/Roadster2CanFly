@@ -135,6 +135,8 @@ These are explicit sandbox criteria, not Tesla specifications or safety standard
 
 `npm test` checks successful defaults for both scenes; actual trajectory changes with airflow and exhaust-speed edits; compensation only in explicit Auto throttle mode; flow/speed/pressure limits; tank and rigid-body mass conservation; nozzle force and moment balance; direction, valve, and timing effects; the final gas step; incomplete-kickflip detection; insufficient lift; unpowered vertical acceleration; repeatability; setup round trips and legacy conversion; and rejected invalid parameters. Tests use the same physics and propulsion modules as the browser.
 
+The [parameter effect audit](PARAMETER_AUDIT.md), regenerated with `npm run audit:parameters`, checks all **99 exposed physics settings across the two scenes** against integrated motion or landing forces. It includes every field on every nozzle, schema coverage checks, and 20 cases where an inactive limit or dependency must leave motion unchanged. The full suite contains 149 tests. A control can affect a flight without changing its final success/failure label; rotation duration primarily changes airborne attitude, while damping and friction can primarily change touchdown and settling. Raising an unused ceiling does not create force. Camera and playback choices do not alter the fixed physics step.
+
 Default smoke results on the development Mac (M1 Max, Node 26, Rapier 0.21.0):
 
 | Scene    | Outcome  | Touchdown downward speed | Peak wheel support | Air consumed | Final tank pressure | Kickflip turns |

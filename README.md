@@ -25,6 +25,7 @@ Open the local URL printed by Vite, normally `http://127.0.0.1:5173/`. Click **R
 
 ```sh
 npm test          # physics and parameter validation
+npm run audit:parameters  # regenerate the per-control sensitivity report
 npm run build    # produces the standalone static website in dist/
 npm run preview  # serves the production build locally
 npm run check:size
@@ -44,6 +45,8 @@ The size check enforces a **1 GB project budget**, including source, installed d
 - **Assistance:** independently enable collective lift and attitude control.
 
 Changes reset the simulation. **Restore successful preset** returns the current scene to its tested defaults. Save/load a version-2 JSON setup or copy a URL containing the full setup, including every nozzle. Version-1 setups are explicitly converted from their impulse budget to an equivalent usable air mass; results can differ under the new model. Export the run’s telemetry as CSV, including tank state, forces, and individual nozzle flows and exhaust directions.
+
+Every exposed physics setting has an automated case that changes actual motion or landing forces: **50 settings for the ramp and 49 for the kickflip**, including all seven settings on each nozzle. Some ranges intentionally leave the flight unchanged: extra tank reserve, unused force/valve limits, excess suspension travel, and firing time after assisted demand ends. Camera and playback controls affect presentation. See the [complete parameter effect audit](docs/PARAMETER_AUDIT.md) for the tested values and measured effects, including 20 expected unchanged cases.
 
 ## What “recreate” means here
 
@@ -73,7 +76,7 @@ src/scene.js        Procedural Three.js artwork and cameras
 src/main.js         Controls, playback, configuration, and CSV export
 src/style.css       Responsive interface
 tests/              Repeatable physics acceptance tests
-scripts/            Project-size check
+scripts/            Project-size check and parameter sensitivity audit
 docs/               Model documentation
 ```
 

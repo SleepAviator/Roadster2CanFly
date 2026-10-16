@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test tests/*.test.js",
+    "audit:parameters": "node scripts/audit-parameters.mjs",
     "check:size": "node scripts/check-size.mjs"
   },
   "engines": {
